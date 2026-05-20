@@ -1,0 +1,14 @@
+# Core Orchestration and Local Models
+llama-index-core>=0.10.0
+llama-index-llms-ollama
+llama-index-embeddings-ollama
+
+# Vector Database and LlamaIndex integration
+chromadb
+llama-index-vector-stores-chroma
+
+# Document parsing and utilities
+pypdf
+
+# Interactive UI
+streamlit

@@ -1,0 +1,19 @@
+# IT DEPT SUPPORT GUIDE & INTERNAL NETWORK CONFIGURATIONS
+
+Document Ref: IT-FAQ-9092
+Clearance Requirement: Level 1 (Confidential) and above.
+Last Updated: May 2, 2026
+
+## 1. SECURE VPN INTRANET ACCESS
+Employees working remotely must use the secure government VPN client (GovConnect v4.2) to access internal databases.
+*   **Connection URL:** The VPN endpoint is `https://vpn.intranet.secure.gov`.
+*   **Authentication:** Requires two-factor authentication (2FA) via the approved hardware token or Microsoft Authenticator app.
+*   **Password Policy:** Passwords must be at least 16 characters, containing uppercase, lowercase, numbers, and special characters. Passwords expire every 90 days.
+
+## 2. SETTING UP LOCAL PRINTER ACCESS
+To connect to the floor printers:
+1. Open the System Settings on your workstation.
+2. Select "Printers & Scanners" and click "Add Printer".
+3. Enter the network IP address: `10.102.50.45` for the Department Color Laserjet (Floor 2, Room 202).
+4. The system will automatically fetch the driver package from the intranet repository.
+5. If prompted for admin authentication, contact the IT desk at extension 4900.

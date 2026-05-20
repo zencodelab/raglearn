@@ -1,0 +1,15 @@
+# SECURE ZONE SECURITY PROTOCOLS AND CLEARANCE LEVEL PROCEDURES
+
+Document Ref: SEC-PROT-2026-V2
+Clearance Requirement: Level 1 (Confidential) and above.
+Last Updated: April 15, 2026
+
+## 1. SERVER ROOM ACCESS AND PHYSICAL TEMPERATURE CONTROLS
+The primary server room (Room 404-B) houses sensitive network infrastructure. 
+*   **Temperature Requirements:** The environmental control systems must keep the room temperature strictly between 68 and 72 degrees Fahrenheit (20 to 22.2 degrees Celsius) to ensure optimal hardware operation and prevent thermal throttling.
+*   **Access Credentials:** Authorized personnel must wear visible Level 1 or higher color-coded badge credentials at all times inside the secure room. 
+*   **Log Book:** Any physical entry by contractors or auxiliary staff must be logged in the paper binder kept at the entry vestibule, noting the entry timestamp, badge ID, and purpose.
+
+## 2. VISITORS AND KEYCARD PROCEDURES
+*   All visitors without a permanent active clearance badge must be escorted by an authorized Level 2 employee at all times.
+*   Temporary visitor keycards must be returned to the front desk receptionist before 17:00 daily. If a visitor card is lost, it must be reported to the Chief Information Security Officer (CISO) immediately so it can be deactivated in the active directory console.
