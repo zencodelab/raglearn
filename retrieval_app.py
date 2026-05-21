@@ -11,6 +11,7 @@ from llama_index.core import (
 from llama_index.embeddings.ollama import OllamaEmbedding
 from llama_index.llms.ollama import Ollama
 from llama_index.vector_stores.chroma import ChromaVectorStore
+from llama_index.core.vector_stores import MetadataFilters, MetadataFilter, FilterOperator
 
 # Configure logging
 logging.basicConfig(
@@ -30,8 +31,8 @@ EMBED_MODEL = "nomic-embed-text"
 DB_PATH = "./chroma_db"
 COLLECTION_NAME = "local_rag_collection"
 
-def get_query_engine():
-    """Initializes and returns the RAG query engine connected to our local database."""
+def get_query_engine(user_clearance="L2"):
+    """Initializes and returns the RAG query engine connected to our local database with RBAC pre-filtering."""
     # 1. Setup local Ollama components
     ollama_base_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
     llm = Ollama(model=LLM_MODEL, base_url=ollama_base_url, request_timeout=90.0)
@@ -70,17 +71,37 @@ def get_query_engine():
     )
     qa_template = PromptTemplate(secure_prompt_tmpl)
     
-    # Create query engine with similarity top_k set to 3
+    # 4. Set up RBAC pre-filtering constraints
+    allowed_levels = ["Public"]
+    if user_clearance == "L1":
+        allowed_levels = ["Public", "L1"]
+    elif user_clearance == "L2":
+        allowed_levels = ["Public", "L1", "L2"]
+        
+    logger.info(f"Applying pre-filtering: User Clearance level '{user_clearance}' allows access to {allowed_levels}")
+    
+    filters = MetadataFilters(
+        filters=[
+            MetadataFilter(
+                key="clearance_level",
+                value=allowed_levels,
+                operator=FilterOperator.IN
+            )
+        ]
+    )
+    
+    # Create query engine with similarity top_k set to 3 and pre-filters active
     query_engine = index.as_query_engine(
         text_qa_template=qa_template,
-        similarity_top_k=3
+        similarity_top_k=3,
+        filters=filters
     )
     return query_engine
 
-def query_rag(query_text: str):
+def query_rag(query_text: str, user_clearance: str = "L2"):
     """Executes the query and prints source documents alongside the response."""
     try:
-        query_engine = get_query_engine()
+        query_engine = get_query_engine(user_clearance=user_clearance)
     except Exception as e:
         print(f"\n[ERROR] Failed to initialize query engine: {e}")
         print("Please ensure Ollama is running and you have run 'ingestion.py' first.\n")

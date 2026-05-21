@@ -6,6 +6,7 @@ from llama_index.llms.ollama import Ollama
 from llama_index.embeddings.ollama import OllamaEmbedding
 from llama_index.core import Settings, PromptTemplate, StorageContext, VectorStoreIndex
 from llama_index.vector_stores.chroma import ChromaVectorStore
+from llama_index.core.vector_stores import MetadataFilters, MetadataFilter, FilterOperator
 
 # 1. Page Configuration and Sleek Design
 st.set_page_config(
@@ -258,6 +259,13 @@ selected_top_k = st.sidebar.slider(
     help="The number of relevant text chunks to retrieve and feed to the LLM."
 )
 
+selected_clearance = st.sidebar.selectbox(
+    "Active User Clearance",
+    options=["L2 (Top Secret)", "L1 (Secret)", "Public (Unclassified)"],
+    index=2,
+    help="Define the clearance level of the active user session. Sensitive context chunks will be pre-filtered at the database layer."
+)
+
 # System Health indicator
 st.sidebar.subheader("🔌 Connection Status")
 try:
@@ -290,8 +298,19 @@ data_dir = "./data"
 if os.path.exists(data_dir):
     files = [f for f in os.listdir(data_dir) if os.path.isfile(os.path.join(data_dir, f))]
     if files:
+        def get_clearance_badge(name):
+            if "security_protocols" in name:
+                return '<span class="badge" style="background:#ef4444; color:white; font-size:0.65rem; padding: 2px 6px; border-radius: 4px;">L2</span>'
+            elif "it_support_faq" in name:
+                return '<span class="badge" style="background:#f59e0b; color:black; font-size:0.65rem; padding: 2px 6px; border-radius: 4px;">L1</span>'
+            else:
+                return '<span class="badge" style="background:#10b981; color:white; font-size:0.65rem; padding: 2px 6px; border-radius: 4px;">PUB</span>'
+
         file_list_html = "".join([
-            f'<div class="doc-item">📄 <span>{name}</span></div>' 
+            f'<div class="doc-item" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; background:#0b131e; padding:6px 10px; border-radius:6px; border:1px solid #1e293b;">'
+            f'<span style="font-size:0.85rem; color:#f1f5f9;">📄 {name}</span>'
+            f'{get_clearance_badge(name)}'
+            f'</div>' 
             for name in files
         ])
         st.sidebar.markdown(file_list_html, unsafe_allow_html=True)
@@ -302,7 +321,7 @@ else:
 
 # 3. Cache the Query Engine creation
 @st.cache_resource(show_spinner=False)
-def load_rag_engine(llm_name, top_k):
+def load_rag_index(llm_name):
     ollama_base_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
     llm = Ollama(model=llm_name, base_url=ollama_base_url, request_timeout=120.0)
     embed_model = OllamaEmbedding(model_name=EMBED_MODEL, base_url=ollama_base_url)
@@ -316,28 +335,11 @@ def load_rag_engine(llm_name, top_k):
     vector_store = ChromaVectorStore(chroma_collection=chroma_collection)
     storage_context = StorageContext.from_defaults(vector_store=vector_store)
     index = VectorStoreIndex.from_vector_store(vector_store, storage_context=storage_context)
-    
-    secure_prompt_tmpl = (
-        "You are a highly secure, private government AI assistant.\n"
-        "Answer the user's question ONLY using the provided source context. Do not make up facts or use external information.\n"
-        "If the answer cannot be found in the context, state 'I cannot find the answer in the provided documents.'\n\n"
-        "Context:\n"
-        "---------------------\n"
-        "{context_str}\n"
-        "---------------------\n\n"
-        "Question: {query_str}\n"
-        "Answer:"
-    )
-    qa_template = PromptTemplate(secure_prompt_tmpl)
-    
-    return index.as_query_engine(
-        text_qa_template=qa_template,
-        similarity_top_k=top_k
-    )
+    return index
 
-# Initialize query engine based on sidebar state
+# Initialize vector store index based on sidebar LLM selection
 try:
-    query_engine = load_rag_engine(selected_llm, selected_top_k)
+    index = load_rag_index(selected_llm)
 except Exception as e:
     st.error(f"⚠️ Failed to connect to local database: {e}. Please run `python ingestion.py` to index documents first.")
     st.stop()
@@ -384,8 +386,53 @@ if user_prompt := st.chat_input("Ask a question about the secure intranet docume
         
         with st.spinner("Analyzing document database and generating grounded answer..."):
             try:
-                # Query RAG engine
-                response = query_engine.query(user_prompt)
+                # 1. Parse active clearance levels
+                user_clearance_code = "Public"
+                if "L1" in selected_clearance:
+                    user_clearance_code = "L1"
+                elif "L2" in selected_clearance:
+                    user_clearance_code = "L2"
+                
+                allowed_levels = ["Public"]
+                if user_clearance_code == "L1":
+                    allowed_levels = ["Public", "L1"]
+                elif user_clearance_code == "L2":
+                    allowed_levels = ["Public", "L1", "L2"]
+                
+                # 2. Build LlamaIndex query pre-filters for RBAC
+                filters = MetadataFilters(
+                    filters=[
+                        MetadataFilter(
+                            key="clearance_level",
+                            value=allowed_levels,
+                            operator=FilterOperator.IN
+                        )
+                    ]
+                )
+                
+                # 3. Dynamic secure prompt definition
+                secure_prompt_tmpl = (
+                    "You are a highly secure, private government AI assistant.\n"
+                    "Answer the user's question ONLY using the provided source context. Do not make up facts or use external information.\n"
+                    "If the answer cannot be found in the context, state 'I cannot find the answer in the provided documents.'\n\n"
+                    "Context:\n"
+                    "---------------------\n"
+                    "{context_str}\n"
+                    "---------------------\n\n"
+                    "Question: {query_str}\n"
+                    "Answer:"
+                )
+                qa_template = PromptTemplate(secure_prompt_tmpl)
+                
+                # 4. Generate dynamic query engine
+                active_query_engine = index.as_query_engine(
+                    text_qa_template=qa_template,
+                    similarity_top_k=selected_top_k,
+                    filters=filters
+                )
+                
+                # 5. Execute search and synthesis
+                response = active_query_engine.query(user_prompt)
                 synthesized_text = response.response.strip()
                 
                 # Render synthesized text

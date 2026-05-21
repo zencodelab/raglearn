@@ -51,11 +51,27 @@ def main():
         logger.error(f"Data directory '{data_dir}' is empty or does not exist. Please place documents there first.")
         sys.exit(1)
         
-    logger.info(f"Loading documents from folder '{data_dir}'...")
     try:
         reader = SimpleDirectoryReader(input_dir=data_dir)
         documents = reader.load_data()
         logger.info(f"Successfully loaded {len(documents)} documents.")
+        
+        # Helper to assign clearance levels based on file name
+        def get_clearance_level(file_name):
+            if "security_protocols" in file_name:
+                return "L2"
+            elif "it_support_faq" in file_name:
+                return "L1"
+            else:
+                return "Public"
+
+        # Inject clearance levels into document metadata for RBAC pre-filtering
+        logger.info("Injecting Role-Based Access Control (RBAC) clearance levels...")
+        for doc in documents:
+            file_name = doc.metadata.get("file_name", "")
+            clearance = get_clearance_level(file_name)
+            doc.metadata["clearance_level"] = clearance
+            logger.info(f" -> Tagged document '{file_name}' with clearance level: {clearance}")
     except Exception as e:
         logger.error(f"Error loading documents: {e}")
         sys.exit(1)
