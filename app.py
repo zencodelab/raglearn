@@ -303,9 +303,9 @@ else:
 # 3. Cache the Query Engine creation
 @st.cache_resource(show_spinner=False)
 def load_rag_engine(llm_name, top_k):
-    """Creates the LlamaIndex query engine, caching it based on LLM model and top-k selection."""
-    llm = Ollama(model=llm_name, base_url="http://localhost:11434", request_timeout=120.0)
-    embed_model = OllamaEmbedding(model_name=EMBED_MODEL, base_url="http://localhost:11434")
+    ollama_base_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+    llm = Ollama(model=llm_name, base_url=ollama_base_url, request_timeout=120.0)
+    embed_model = OllamaEmbedding(model_name=EMBED_MODEL, base_url=ollama_base_url)
     
     Settings.llm = llm
     Settings.embed_model = embed_model

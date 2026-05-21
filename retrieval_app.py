@@ -33,8 +33,9 @@ COLLECTION_NAME = "local_rag_collection"
 def get_query_engine():
     """Initializes and returns the RAG query engine connected to our local database."""
     # 1. Setup local Ollama components
-    llm = Ollama(model=LLM_MODEL, base_url="http://localhost:11434", request_timeout=90.0)
-    embed_model = OllamaEmbedding(model_name=EMBED_MODEL, base_url="http://localhost:11434")
+    ollama_base_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+    llm = Ollama(model=LLM_MODEL, base_url=ollama_base_url, request_timeout=90.0)
+    embed_model = OllamaEmbedding(model_name=EMBED_MODEL, base_url=ollama_base_url)
     
     Settings.llm = llm
     Settings.embed_model = embed_model

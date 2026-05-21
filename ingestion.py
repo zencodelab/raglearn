@@ -25,10 +25,12 @@ def main():
     
     # 1. Initialize local Ollama Embedding Model
     logger.info("Initializing local embedding model (nomic-embed-text)...")
+    ollama_base_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+    logger.info(f"Using Ollama base URL: {ollama_base_url}")
     try:
         embed_model = OllamaEmbedding(
             model_name="nomic-embed-text",
-            base_url="http://localhost:11434",
+            base_url=ollama_base_url,
             request_timeout=60.0
         )
         # Configure LlamaIndex to use this embedding model globally

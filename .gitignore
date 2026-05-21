@@ -1,1 +1,46 @@
-.venv
+# Python virtual environments
+.venv/
+venv/
+env/
+ENV/
+.env/
+
+# Local persistent Vector Database (MUST be ignored to avoid committing large binary databases)
+chroma_db/
+.chroma/
+
+# Python compiled caches and bytecode
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+
+# OS-specific temporary files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Environment variables and secrets
+.env
+.env.local
+.env.*.local
+
+# IDEs and Text Editors settings
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+*~
+
+# Streamlit config and runtime caches
+.streamlit/config.toml
+.streamlit/secrets.toml

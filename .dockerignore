@@ -1,0 +1,22 @@
+# Ignore local virtual environment and packages
+.venv/
+venv/
+env/
+
+# Ignore database storage (mounted at runtime instead of packaged)
+chroma_db/
+
+# Ignore Python caches and compiled bytecode
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Ignore version control systems and files
+.git/
+.gitignore
+
+# Ignore Docker files themselves
+.dockerignore
+Dockerfile
+docker-compose.yml

@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  govshield:
+    build: .
+    container_name: govshield-rag-portal
+    ports:
+      - "8501:8501"
+    environment:
+      # Route LLM/embedding requests to the host machine's native Ollama engine
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+    volumes:
+      # Bind mount documents and vector database to keep files persistent
+      - ./data:/app/data
+      - ./chroma_db:/app/chroma_db
+    extra_hosts:
+      # Maps host.docker.internal to the gateway IP for cross-platform network resolution
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
