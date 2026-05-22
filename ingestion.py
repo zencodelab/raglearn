@@ -3,7 +3,7 @@ import sys
 import logging
 import pypdf
 from pathlib import Path
-import chromadb
+import psycopg2
 from llama_index.core import (
     SimpleDirectoryReader,
     VectorStoreIndex,
@@ -14,7 +14,7 @@ from llama_index.core import (
 from llama_index.core.readers.base import BaseReader
 from llama_index.core.node_parser import SentenceSplitter
 from llama_index.embeddings.ollama import OllamaEmbedding
-from llama_index.vector_stores.chroma import ChromaVectorStore
+from llama_index.vector_stores.postgres import PGVectorStore
 
 class PyPDFLocalReader(BaseReader):
     """Secure, local, 100% offline multi-page PDF reader."""
@@ -104,33 +104,51 @@ def main():
         logger.error(f"Error loading documents: {e}")
         sys.exit(1)
 
-    # 4. Set up local ChromaDB Vector Store
-    logger.info("Setting up local ChromaDB persistent vector database...")
-    db_path = "./chroma_db"
-    collection_name = "local_rag_collection"
+    # 4. Set up local PostgreSQL pgvector Store
+    logger.info("Setting up local PostgreSQL pgvector vector database...")
+    postgres_host = os.environ.get("POSTGRES_HOST", "localhost")
+    postgres_port = int(os.environ.get("POSTGRES_PORT", "5432"))
+    postgres_db = os.environ.get("POSTGRES_DB", "govshield_db")
+    postgres_user = os.environ.get("POSTGRES_USER", "govshield_user")
+    postgres_password = os.environ.get("POSTGRES_PASSWORD", "govshield_secure_pwd")
+    table_name = "local_rag_collection"
     
+    # Establish a connection using psycopg2 to drop the existing table for a clean re-ingestion
     try:
-        # Initialize the Chroma DB client on disk
-        chroma_client = chromadb.PersistentClient(path=db_path)
-        
-        # If the collection already exists, we will delete it to prevent duplicate index entries on successive runs
-        existing_collections = [c.name for c in chroma_client.list_collections()]
-        if collection_name in existing_collections:
-            logger.info(f"Collection '{collection_name}' already exists. Recreating it to refresh the index.")
-            chroma_client.delete_collection(name=collection_name)
-            
-        # Create a fresh collection
-        chroma_collection = chroma_client.create_collection(name=collection_name)
-        
-        # Connect Chroma DB to LlamaIndex vector store
-        vector_store = ChromaVectorStore(chroma_collection=chroma_collection)
+        logger.info(f"Connecting to database to perform clean re-indexing drop of table 'data_{table_name}'...")
+        conn = psycopg2.connect(
+            host=postgres_host,
+            port=postgres_port,
+            dbname=postgres_db,
+            user=postgres_user,
+            password=postgres_password
+        )
+        conn.autocommit = True
+        with conn.cursor() as cursor:
+            cursor.execute(f"DROP TABLE IF EXISTS data_{table_name} CASCADE;")
+            logger.info(f"Successfully dropped table 'data_{table_name}' for clean re-run.")
+        conn.close()
+    except Exception as e:
+        logger.warning(f"Could not drop table data_{table_name} (it might not exist yet): {e}")
+
+    try:
+        # Initialize PGVectorStore
+        vector_store = PGVectorStore.from_params(
+            host=postgres_host,
+            port=postgres_port,
+            database=postgres_db,
+            user=postgres_user,
+            password=postgres_password,
+            table_name=table_name,
+            embed_dim=768,  # nomic-embed-text embedding dimension
+        )
         storage_context = StorageContext.from_defaults(vector_store=vector_store)
     except Exception as e:
-        logger.error(f"Error setting up ChromaDB: {e}")
+        logger.error(f"Error setting up PGVectorStore: {e}")
         sys.exit(1)
 
     # 5. Build the Vector Store Index (Embed & Store)
-    logger.info("Splitting documents, generating embeddings via Ollama, and saving to ChromaDB...")
+    logger.info("Splitting documents, generating embeddings via Ollama, and saving to PostgreSQL...")
     try:
         index = VectorStoreIndex.from_documents(
             documents,
@@ -139,7 +157,7 @@ def main():
             show_progress=True
         )
         logger.info("Ingestion pipeline completed successfully!")
-        logger.info(f"Vector Database saved locally at '{db_path}' in collection '{collection_name}'.")
+        logger.info(f"Vector Database saved in PostgreSQL table 'data_{table_name}' inside DB '{postgres_db}'.")
     except Exception as e:
         logger.error(f"Failed to generate embeddings and index documents: {e}")
         sys.exit(1)

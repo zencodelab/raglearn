@@ -1,11 +1,11 @@
 import os
 import streamlit as st
-import chromadb
-from retrieval_app import get_query_engine, LLM_MODEL, EMBED_MODEL, DB_PATH, COLLECTION_NAME
+import psycopg2
+from retrieval_app import get_query_engine, LLM_MODEL, EMBED_MODEL, TABLE_NAME
 from llama_index.llms.ollama import Ollama
 from llama_index.embeddings.ollama import OllamaEmbedding
 from llama_index.core import Settings, PromptTemplate, StorageContext, VectorStoreIndex
-from llama_index.vector_stores.chroma import ChromaVectorStore
+from llama_index.vector_stores.postgres import PGVectorStore
 from llama_index.core.vector_stores import MetadataFilters, MetadataFilter, FilterOperator
 
 # 1. Page Configuration and Sleek Design
@@ -269,8 +269,21 @@ selected_clearance = st.sidebar.selectbox(
 # System Health indicator
 st.sidebar.subheader("🔌 Connection Status")
 try:
-    chroma_client = chromadb.PersistentClient(path=DB_PATH)
-    colls = chroma_client.list_collections()
+    postgres_host = os.environ.get("POSTGRES_HOST", "localhost")
+    postgres_port = int(os.environ.get("POSTGRES_PORT", "5432"))
+    postgres_db = os.environ.get("POSTGRES_DB", "govshield_db")
+    postgres_user = os.environ.get("POSTGRES_USER", "govshield_user")
+    postgres_password = os.environ.get("POSTGRES_PASSWORD", "govshield_secure_pwd")
+    
+    conn = psycopg2.connect(
+        host=postgres_host,
+        port=postgres_port,
+        dbname=postgres_db,
+        user=postgres_user,
+        password=postgres_password,
+        connect_timeout=2
+    )
+    conn.close()
     db_indicator = '<span><span class="dot dot-green"></span>Connected</span>'
 except Exception:
     db_indicator = '<span><span class="dot dot-red"></span>Disconnected</span>'
@@ -330,10 +343,21 @@ def load_rag_index(llm_name):
     Settings.llm = llm
     Settings.embed_model = embed_model
     
-    chroma_client = chromadb.PersistentClient(path=DB_PATH)
-    chroma_collection = chroma_client.get_collection(name=COLLECTION_NAME)
+    postgres_host = os.environ.get("POSTGRES_HOST", "localhost")
+    postgres_port = int(os.environ.get("POSTGRES_PORT", "5432"))
+    postgres_db = os.environ.get("POSTGRES_DB", "govshield_db")
+    postgres_user = os.environ.get("POSTGRES_USER", "govshield_user")
+    postgres_password = os.environ.get("POSTGRES_PASSWORD", "govshield_secure_pwd")
     
-    vector_store = ChromaVectorStore(chroma_collection=chroma_collection)
+    vector_store = PGVectorStore.from_params(
+        host=postgres_host,
+        port=postgres_port,
+        database=postgres_db,
+        user=postgres_user,
+        password=postgres_password,
+        table_name=TABLE_NAME,
+        embed_dim=768,  # nomic-embed-text embedding dimension
+    )
     storage_context = StorageContext.from_defaults(vector_store=vector_store)
     index = VectorStoreIndex.from_vector_store(vector_store, storage_context=storage_context)
     return index

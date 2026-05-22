@@ -12,3 +12,8 @@ pypdf
 
 # Interactive UI
 streamlit
+
+# PostgreSQL and pgvector integration
+llama-index-vector-stores-postgres
+psycopg2-binary
+pgvector

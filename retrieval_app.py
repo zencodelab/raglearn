@@ -1,7 +1,6 @@
 import os
 import sys
 import logging
-import chromadb
 from llama_index.core import (
     VectorStoreIndex,
     StorageContext,
@@ -10,7 +9,7 @@ from llama_index.core import (
 )
 from llama_index.embeddings.ollama import OllamaEmbedding
 from llama_index.llms.ollama import Ollama
-from llama_index.vector_stores.chroma import ChromaVectorStore
+from llama_index.vector_stores.postgres import PGVectorStore
 from llama_index.core.vector_stores import MetadataFilters, MetadataFilter, FilterOperator
 
 # Configure logging
@@ -20,7 +19,7 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stdout)]
 )
 # Suppress noisy library logs to keep retrieval outputs clean
-logging.getLogger("chromadb").setLevel(logging.WARNING)
+logging.getLogger("psycopg2").setLevel(logging.WARNING)
 logging.getLogger("urllib3").setLevel(logging.WARNING)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
@@ -28,8 +27,7 @@ logger = logging.getLogger(__name__)
 # Choose LLM model (can be "gemma3:4b" or "qwen2.5:7b")
 LLM_MODEL = "gemma3:4b"
 EMBED_MODEL = "nomic-embed-text"
-DB_PATH = "./chroma_db"
-COLLECTION_NAME = "local_rag_collection"
+TABLE_NAME = "local_rag_collection"
 
 def get_query_engine(user_clearance="L2"):
     """Initializes and returns the RAG query engine connected to our local database with RBAC pre-filtering."""
@@ -41,14 +39,22 @@ def get_query_engine(user_clearance="L2"):
     Settings.llm = llm
     Settings.embed_model = embed_model
     
-    # 2. Connect to existing ChromaDB
-    if not os.path.exists(DB_PATH):
-        raise FileNotFoundError(f"ChromaDB not found at {DB_PATH}. Please run ingestion.py first.")
-        
-    chroma_client = chromadb.PersistentClient(path=DB_PATH)
-    chroma_collection = chroma_client.get_collection(name=COLLECTION_NAME)
+    # 2. Connect to local PostgreSQL pgvector Store
+    postgres_host = os.environ.get("POSTGRES_HOST", "localhost")
+    postgres_port = int(os.environ.get("POSTGRES_PORT", "5432"))
+    postgres_db = os.environ.get("POSTGRES_DB", "govshield_db")
+    postgres_user = os.environ.get("POSTGRES_USER", "govshield_user")
+    postgres_password = os.environ.get("POSTGRES_PASSWORD", "govshield_secure_pwd")
     
-    vector_store = ChromaVectorStore(chroma_collection=chroma_collection)
+    vector_store = PGVectorStore.from_params(
+        host=postgres_host,
+        port=postgres_port,
+        database=postgres_db,
+        user=postgres_user,
+        password=postgres_password,
+        table_name=TABLE_NAME,
+        embed_dim=768,  # nomic-embed-text embedding dimension
+    )
     storage_context = StorageContext.from_defaults(vector_store=vector_store)
     
     # Load the index from the vector store

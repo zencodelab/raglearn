@@ -1,6 +1,19 @@
 version: '3.8'
 
 services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: govshield-pgvector
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=govshield_db
+      - POSTGRES_USER=govshield_user
+      - POSTGRES_PASSWORD=govshield_secure_pwd
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+
   govshield:
     build: .
     container_name: govshield-rag-portal
@@ -9,11 +22,21 @@ services:
     environment:
       # Route LLM/embedding requests to the host machine's native Ollama engine
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      # Connect to the PostgreSQL pgvector service
+      - POSTGRES_HOST=db
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=govshield_db
+      - POSTGRES_USER=govshield_user
+      - POSTGRES_PASSWORD=govshield_secure_pwd
+    depends_on:
+      - db
     volumes:
-      # Bind mount documents and vector database to keep files persistent
+      # Bind mount documents to keep files persistent
       - ./data:/app/data
-      - ./chroma_db:/app/chroma_db
     extra_hosts:
       # Maps host.docker.internal to the gateway IP for cross-platform network resolution
       - "host.docker.internal:host-gateway"
     restart: unless-stopped
+
+volumes:
+  pgdata:
