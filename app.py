@@ -299,9 +299,10 @@ if os.path.exists(data_dir):
     files = [f for f in os.listdir(data_dir) if os.path.isfile(os.path.join(data_dir, f))]
     if files:
         def get_clearance_badge(name):
-            if "security_protocols" in name:
+            name_lower = name.lower()
+            if "security_protocols" in name_lower or "internal_procedures" in name_lower:
                 return '<span class="badge" style="background:#ef4444; color:white; font-size:0.65rem; padding: 2px 6px; border-radius: 4px;">L2</span>'
-            elif "it_support_faq" in name:
+            elif "it_support_faq" in name_lower or "office_policies" in name_lower:
                 return '<span class="badge" style="background:#f59e0b; color:black; font-size:0.65rem; padding: 2px 6px; border-radius: 4px;">L1</span>'
             else:
                 return '<span class="badge" style="background:#10b981; color:white; font-size:0.65rem; padding: 2px 6px; border-radius: 4px;">PUB</span>'
@@ -365,9 +366,10 @@ for msg in st.session_state.messages:
         if msg.get("sources") and msg["role"] == "assistant":
             with st.expander("🔍 View Retrieved Sources"):
                 for src in msg["sources"]:
+                    page_info = f" | PAGE: {src['page']}" if src.get('page') else ""
                     st.markdown(f"""
                     <div class="source-card">
-                        <div class="source-meta">📄 FILE: {src['file'].upper()} | RELEVANCE: {src['score']:.4f}</div>
+                        <div class="source-meta">📄 FILE: {src['file'].upper()}{page_info} | RELEVANCE: {src['score']:.4f}</div>
                         <div class="source-text">"{src['text']}"</div>
                     </div>
                     """, unsafe_allow_html=True)
@@ -443,6 +445,7 @@ if user_prompt := st.chat_input("Ask a question about the secure intranet docume
                 for node in response.source_nodes:
                     sources.append({
                         "file": node.node.metadata.get("file_name", "Unknown Document"),
+                        "page": node.node.metadata.get("page_label", None),
                         "score": node.score or 0.0,
                         "text": node.node.get_content().strip()
                     })
@@ -451,9 +454,10 @@ if user_prompt := st.chat_input("Ask a question about the secure intranet docume
                 if sources:
                     with sources_placeholder.expander("🔍 View Retrieved Sources"):
                         for src in sources:
+                            page_info = f" | PAGE: {src['page']}" if src.get('page') else ""
                             st.markdown(f"""
                             <div class="source-card">
-                                <div class="source-meta">📄 FILE: {src['file'].upper()} | RELEVANCE: {src['score']:.4f}</div>
+                                <div class="source-meta">📄 FILE: {src['file'].upper()}{page_info} | RELEVANCE: {src['score']:.4f}</div>
                                 <div class="source-text">"{src['text']}"</div>
                             </div>
                             """, unsafe_allow_html=True)

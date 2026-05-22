@@ -1,16 +1,39 @@
 import os
 import sys
 import logging
+import pypdf
+from pathlib import Path
 import chromadb
 from llama_index.core import (
     SimpleDirectoryReader,
     VectorStoreIndex,
     StorageContext,
     Settings,
+    Document,
 )
+from llama_index.core.readers.base import BaseReader
 from llama_index.core.node_parser import SentenceSplitter
 from llama_index.embeddings.ollama import OllamaEmbedding
 from llama_index.vector_stores.chroma import ChromaVectorStore
+
+class PyPDFLocalReader(BaseReader):
+    """Secure, local, 100% offline multi-page PDF reader."""
+    def load_data(self, file: Path, extra_info: dict = None) -> list:
+        docs = []
+        with open(file, "rb") as f:
+            pdf = pypdf.PdfReader(f)
+            num_pages = len(pdf.pages)
+            for page_idx in range(num_pages):
+                page = pdf.pages[page_idx]
+                text = page.extract_text() or ""
+                metadata = {
+                    "file_name": file.name,
+                    "page_label": str(page_idx + 1),
+                }
+                if extra_info:
+                    metadata.update(extra_info)
+                docs.append(Document(text=text, metadata=metadata))
+        return docs
 
 # Configure logging to console
 logging.basicConfig(
@@ -52,15 +75,19 @@ def main():
         sys.exit(1)
         
     try:
-        reader = SimpleDirectoryReader(input_dir=data_dir)
+        reader = SimpleDirectoryReader(
+            input_dir=data_dir,
+            file_extractor={".pdf": PyPDFLocalReader()}
+        )
         documents = reader.load_data()
-        logger.info(f"Successfully loaded {len(documents)} documents.")
+        logger.info(f"Successfully loaded {len(documents)} document pages/segments.")
         
         # Helper to assign clearance levels based on file name
         def get_clearance_level(file_name):
-            if "security_protocols" in file_name:
+            file_name_lower = file_name.lower()
+            if "security_protocols" in file_name_lower or "internal_procedures" in file_name_lower:
                 return "L2"
-            elif "it_support_faq" in file_name:
+            elif "it_support_faq" in file_name_lower or "office_policies" in file_name_lower:
                 return "L1"
             else:
                 return "Public"
@@ -71,7 +98,8 @@ def main():
             file_name = doc.metadata.get("file_name", "")
             clearance = get_clearance_level(file_name)
             doc.metadata["clearance_level"] = clearance
-            logger.info(f" -> Tagged document '{file_name}' with clearance level: {clearance}")
+            page_info = f" (Page {doc.metadata['page_label']})" if "page_label" in doc.metadata else ""
+            logger.info(f" -> Tagged document '{file_name}'{page_info} with clearance level: {clearance}")
     except Exception as e:
         logger.error(f"Error loading documents: {e}")
         sys.exit(1)

@@ -123,6 +123,7 @@ def query_rag(query_text: str, user_clearance: str = "L2"):
     for i, source_node in enumerate(response.source_nodes, 1):
         metadata = source_node.node.metadata
         file_name = metadata.get("file_name", "Unknown File")
+        page_label = metadata.get("page_label", None)
         score = source_node.score
         content = source_node.node.get_content().strip().replace("\n", "  ")
         
@@ -130,7 +131,8 @@ def query_rag(query_text: str, user_clearance: str = "L2"):
         if len(content) > 120:
             content = content[:120] + "..."
             
-        print(f"\n[{i}] Source File: {file_name} (Relevance Score: {score:.4f})")
+        page_info = f" (Page {page_label})" if page_label else ""
+        print(f"\n[{i}] Source File: {file_name}{page_info} (Relevance Score: {score:.4f})")
         print(f"    Snippet: \"{content}\"")
     print("\n" + "-"*60 + "\n")
 
