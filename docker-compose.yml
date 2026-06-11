@@ -38,5 +38,26 @@ services:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped
 
+  govshield-api:
+    build: .
+    container_name: govshield-rag-api
+    command: uvicorn api:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    environment:
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - POSTGRES_HOST=db
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=govshield_db
+      - POSTGRES_USER=govshield_user
+      - POSTGRES_PASSWORD=govshield_secure_pwd
+    depends_on:
+      - db
+    volumes:
+      - ./data:/app/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
 volumes:
   pgdata:

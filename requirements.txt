@@ -3,10 +3,6 @@ llama-index-core>=0.10.0
 llama-index-llms-ollama
 llama-index-embeddings-ollama
 
-# Vector Database and LlamaIndex integration
-chromadb
-llama-index-vector-stores-chroma
-
 # Document parsing and utilities
 pypdf
 
@@ -17,3 +13,7 @@ streamlit
 llama-index-vector-stores-postgres
 psycopg2-binary
 pgvector
+
+# REST API layer
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0

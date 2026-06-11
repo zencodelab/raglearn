@@ -2,7 +2,7 @@
 
 A **100% offline** Retrieval-Augmented Generation (RAG) system with role-based access control, built for complete data sovereignty. Documents are ingested, chunked, embedded, and queried entirely on-device — zero API calls to third-party clouds.
 
-**Stack:** LlamaIndex · PostgreSQL pgvector · Ollama · Streamlit · Docker
+**Stack:** LlamaIndex · PostgreSQL pgvector · Ollama · FastAPI · Streamlit · Docker
 
 ---
 
@@ -22,13 +22,17 @@ Documents (PDF/TXT)
   └─────────────────────────────────────────┘
         │
         ▼
-  [retrieval_app.py / app.py]
+  [retrieval_app.py / app.py / api.py]
   ┌─────────────────────────────────────────┐
   │ 1. Pre-filter by user clearance level   │  ← RBAC enforcement
   │ 2. Vector similarity search (Top-K)     │
   │ 3. Synthesize via Ollama LLM            │
   │ 4. Refuse if answer not in documents    │  ← grounding guardrail
   └─────────────────────────────────────────┘
+        │
+        ├── Streamlit UI  (port 8501)
+        ├── Interactive CLI  (retrieval_app.py)
+        └── FastAPI REST API  (port 8000)  ← api.py
 ```
 
 ---
@@ -39,6 +43,7 @@ Documents (PDF/TXT)
 - **Multi-page PDF ingestion:** Custom `PyPDFLocalReader` extracts text per page with page-level metadata, enabling source citation down to the exact page.
 - **PostgreSQL pgvector backend:** Production-grade vector storage in a containerized PostgreSQL instance with the `pgvector` extension (768-dimensional embeddings from `nomic-embed-text`).
 - **Grounding guardrail:** Prompt template restricts the LLM to retrieved context only. Returns *"I cannot find the answer in the provided documents."* for out-of-scope queries.
+- **REST API:** FastAPI server (`api.py`) exposes `POST /query` for programmatic access — same RBAC pre-filtering, Pydantic-validated request/response, auto-generated `/docs` (Swagger UI).
 - **Dual interface:** Streamlit web dashboard + interactive CLI (`retrieval_app.py`) for terminal use.
 - **Apple Silicon optimised:** Docker routes LLM/embedding requests to the host Ollama engine via `host.docker.internal`, preserving Metal GPU acceleration.
 
@@ -56,9 +61,10 @@ raglearn/
 ├── ingestion.py             # Ingest pipeline: parse → chunk → RBAC tag → embed → pgvector
 ├── retrieval_app.py         # CLI query engine with RBAC pre-filtering
 ├── app.py                   # Streamlit dashboard (model switcher, Top-K control, source cards)
+├── api.py                   # FastAPI REST server (POST /query, GET /health)
 ├── requirements.txt
 ├── Dockerfile
-├── docker-compose.yml       # Two services: pgvector DB + app
+├── docker-compose.yml       # Three services: pgvector DB + Streamlit app + FastAPI
 └── .dockerignore
 ```
 
@@ -80,9 +86,10 @@ ollama pull gemma3:4b          # synthesis LLM (or qwen2.5:7b)
 
 ## Running with Docker (Recommended)
 
-The `docker-compose.yml` defines two services:
+The `docker-compose.yml` defines three services:
 - **`db`** — `pgvector/pgvector:pg16` PostgreSQL instance, port 5432, named volume `pgdata`
-- **`govshield`** — the app container (Streamlit on port 8501), connects to `db`
+- **`govshield`** — Streamlit dashboard on port 8501, connects to `db`
+- **`govshield-api`** — FastAPI server on port 8000 (same image, command override to `uvicorn api:app`)
 
 ### 1. Start both services
 ```bash
@@ -145,6 +152,63 @@ python retrieval_app.py
 ### 5. Launch Streamlit dashboard
 ```bash
 streamlit run app.py
+```
+
+---
+
+## REST API
+
+The FastAPI server exposes `POST /query` with RBAC pre-filtering. Auto-generated Swagger UI at `/docs`.
+
+### Start the API server
+
+**Docker:**
+```bash
+docker compose up -d govshield-api
+```
+
+**Natively (after activating venv):**
+```bash
+uvicorn api:app --reload --port 8000
+```
+
+### Endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/query` | Submit a question with clearance level |
+| `GET` | `/health` | Liveness check |
+| `GET` | `/docs` | Swagger UI |
+
+### Example requests
+
+```bash
+# Public-clearance query (returns only Public-tagged chunks)
+curl -X POST http://localhost:8000/query \
+  -H "Content-Type: application/json" \
+  -d '{"text": "What are the office hours?", "clearance": "Public"}'
+
+# L2 clearance — full document corpus available
+curl -X POST http://localhost:8000/query \
+  -H "Content-Type: application/json" \
+  -d '{"text": "What are the server room temperature requirements?", "clearance": "L2"}'
+```
+
+### Example response
+
+```json
+{
+  "answer": "The server room must maintain a temperature between 18°C and 24°C...",
+  "sources": [
+    {
+      "file": "security_protocols.txt",
+      "page": null,
+      "score": 0.8742,
+      "snippet": "Server room temperature must be maintained between 18°C and 24°C at all times..."
+    }
+  ],
+  "clearance_used": "L2"
+}
 ```
 
 ---
