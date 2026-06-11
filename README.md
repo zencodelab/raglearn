@@ -1,143 +1,179 @@
-# 🛡️ GovShield: Secure Offline Local RAG Portal
+# 🛡️ GovShield: Secure Offline RAG Portal
 
-An interactive, premium dark-themed, and **100% offline** Retrieval-Augmented Generation (RAG) system built to ensure complete data sovereignty and privacy. Designed for secure, air-gapped environments, GovShield processes and indexes documents entirely on your local machine, utilizing local embedding models and local LLMs via Ollama.
+A **100% offline** Retrieval-Augmented Generation (RAG) system with role-based access control, built for complete data sovereignty. Documents are ingested, chunked, embedded, and queried entirely on-device — zero API calls to third-party clouds.
 
----
-
-## 🎨 Key Features Implemented
-
-*   **🔒 Complete Data Sovereignty**: Operates with absolute offline isolation. Zero API calls are made to third-party public clouds, preventing any external data leakage.
-*   **⚡ Local GPU Acceleration**: Intelligently routes queries from inside Docker to your host Mac's native Ollama engine via `host.docker.internal`, preserving native Apple Silicon Metal GPU acceleration for fast inference times.
-*   **📁 Persistent Storage Mounts**: Synchronizes your host's `./data` folder and persistent `./chroma_db` database inside the container in real time, keeping your indexes and documents accessible and editable.
-*   **🧪 Multi-Model & Top-K Depth Flexibility**: Streamlit dashboard lets you seamlessly toggle retrieval depth (Top-K matching segments) and switch between lightweight models like `gemma3:4b` or `qwen2.5:7b` on the fly.
-*   **🎛️ Cyber-Ops Security Dashboard**: Polished with a custom glassmorphic UI, Google Fonts (`Outfit` and `JetBrains Mono`), animated breathing status indicators, and hover-responsive source citation cards.
-*   **🛡️ Secure Grounding Guardrails**: Prompt templates restrict the LLM to synthesized source context only. If the answer cannot be found in your local files, the system safe-guards against hallucinations by stating: *"I cannot find the answer in the provided documents."*
+**Stack:** LlamaIndex · PostgreSQL pgvector · Ollama · Streamlit · Docker
 
 ---
 
-## 📂 Project Directory Structure
+## Architecture
 
-```text
+```
+Documents (PDF/TXT)
+        │
+        ▼
+  [ingestion.py]
+  ┌─────────────────────────────────────────┐
+  │ 1. Parse (pypdf for multi-page PDFs)    │
+  │ 2. Chunk (SentenceSplitter 500/50)      │
+  │ 3. Tag clearance level (L1/L2/Public)   │  ← RBAC metadata
+  │ 4. Embed (Ollama nomic-embed-text 768d) │
+  │ 5. Store → PostgreSQL pgvector          │
+  └─────────────────────────────────────────┘
+        │
+        ▼
+  [retrieval_app.py / app.py]
+  ┌─────────────────────────────────────────┐
+  │ 1. Pre-filter by user clearance level   │  ← RBAC enforcement
+  │ 2. Vector similarity search (Top-K)     │
+  │ 3. Synthesize via Ollama LLM            │
+  │ 4. Refuse if answer not in documents    │  ← grounding guardrail
+  └─────────────────────────────────────────┘
+```
+
+---
+
+## Key Features
+
+- **Role-Based Access Control (RBAC):** Documents are tagged `L1`, `L2`, or `Public` during ingestion. Queries are pre-filtered at the vector store level before retrieval — a user with `L1` clearance cannot retrieve `L2` chunks even if their query is semantically similar.
+- **Multi-page PDF ingestion:** Custom `PyPDFLocalReader` extracts text per page with page-level metadata, enabling source citation down to the exact page.
+- **PostgreSQL pgvector backend:** Production-grade vector storage in a containerized PostgreSQL instance with the `pgvector` extension (768-dimensional embeddings from `nomic-embed-text`).
+- **Grounding guardrail:** Prompt template restricts the LLM to retrieved context only. Returns *"I cannot find the answer in the provided documents."* for out-of-scope queries.
+- **Dual interface:** Streamlit web dashboard + interactive CLI (`retrieval_app.py`) for terminal use.
+- **Apple Silicon optimised:** Docker routes LLM/embedding requests to the host Ollama engine via `host.docker.internal`, preserving Metal GPU acceleration.
+
+---
+
+## Project Structure
+
+```
 raglearn/
-├── data/                    # Secure local reference manuals
+├── data/                    # Place your documents here (PDF, TXT)
 │   ├── it_support_faq.txt
 │   ├── office_policies.txt
-│   └── security_protocols.txt
-├── chroma_db/               # Persistent Vector Database (created during ingestion)
-├── ingestion.py             # Parses documents, splits into chunks, embeds, and saves to ChromaDB
-├── retrieval_app.py         # Core vector retrieval engine & interactive terminal CLI
-├── app.py                   # Premium Streamlit web application dashboard
-├── requirements.txt         # Optimized, modular local LlamaIndex dependencies
-├── Dockerfile               # Multi-layer Docker image construction
-├── docker-compose.yml       # Host volume mounting & gateway connections
-├── .dockerignore            # Build exclusion rules (ignores .venv and chroma_db context)
-└── README.md                # This comprehensive user manual
+│   ├── security_protocols.txt
+│   └── L1_office_policies.pdf
+├── ingestion.py             # Ingest pipeline: parse → chunk → RBAC tag → embed → pgvector
+├── retrieval_app.py         # CLI query engine with RBAC pre-filtering
+├── app.py                   # Streamlit dashboard (model switcher, Top-K control, source cards)
+├── requirements.txt
+├── Dockerfile
+├── docker-compose.yml       # Two services: pgvector DB + app
+└── .dockerignore
 ```
 
 ---
 
-## ⚙️ Setup Prerequisites
+## Prerequisites
 
-Ensure you have the following installed on your machine:
-1.  **Python 3.9+**
-2.  **Ollama** (Running natively on your macOS host)
-3.  **Docker & Docker Compose** (Only required for running containerized)
+- **Python 3.9+**
+- **Ollama** running natively on the host (not inside Docker)
+- **Docker & Docker Compose** (recommended path; also works natively with a local PostgreSQL)
 
-### Local Ollama Models Cache
-Ensure you have pulled the required models inside your Ollama environment:
+Pull the required Ollama models:
 ```bash
-# Pull local embedding model (384-dimensional)
-ollama pull nomic-embed-text
-
-# Pull the synthesis model
-ollama pull gemma3:4b
+ollama pull nomic-embed-text   # embedding model (768-dimensional)
+ollama pull gemma3:4b          # synthesis LLM (or qwen2.5:7b)
 ```
 
 ---
 
-## 🚀 How to Run Locally (Native Host)
+## Running with Docker (Recommended)
 
-Follow these terminal commands to run GovShield natively in your virtual environment:
+The `docker-compose.yml` defines two services:
+- **`db`** — `pgvector/pgvector:pg16` PostgreSQL instance, port 5432, named volume `pgdata`
+- **`govshield`** — the app container (Streamlit on port 8501), connects to `db`
 
-### 1. Configure the Virtual Environment
-```bash
-# Initialize Python virtual environment
-python3 -m venv .venv
-
-# Activate the environment
-source .venv/bin/activate
-
-# Upgrade pip and install optimized requirements
-pip install --upgrade pip
-pip install -r requirements.txt
-```
-
-### 2. Ingest Reference Documents
-Add text or PDF documents into the `./data/` folder, then run the ingestion pipeline to parse, chunk, embed, and store them in the Chroma vector database:
-```bash
-python ingestion.py
-```
-
-### 3. Run the Interactive CLI Query Tool
-To query your documents directly inside your terminal, run the retrieval app:
-```bash
-# Run a single query
-python retrieval_app.py "What is the network IP address for the floor printer?"
-
-# Or enter interactive loop mode
-python retrieval_app.py
-```
-
-### 4. Boot the Premium Streamlit Dashboard
-```bash
-streamlit run app.py
-```
-Open **`http://localhost:8501`** in your browser to interact with the responsive dashboard.
-
----
-
-## 🐳 How to Run with Docker (Recommended)
-
-Running GovShield inside Docker isolates the web server while mapping database volumes and maintaining GPU speeds.
-
-### 1. Build the Optimized Image
-Thanks to `.dockerignore`, the context transfer is reduced to **`~150kB`** (excluding the massive `.venv` folder). The build process will execute in under 3 minutes:
-```bash
-docker compose build
-```
-
-### 2. Spin up the Container
-Launch the container in detached background mode:
+### 1. Start both services
 ```bash
 docker compose up -d
 ```
-The Streamlit RAG portal will boot and be served live at **`http://localhost:8501`**.
 
-### 3. Run Ingestion Inside the Container
-If you drop new files into your host `./data/` folder, you can run the ingestion pipeline directly inside the active container to refresh the database:
+### 2. Ingest your documents
+Add files to `./data/`, then run ingestion inside the running container:
 ```bash
 docker compose exec govshield python ingestion.py
 ```
 
-### 4. Useful Management Commands
+### 3. Open the dashboard
+Navigate to **`http://localhost:8501`**
+
+### Useful commands
 ```bash
-# Stream live application container logs
-docker compose logs -f
-
-# Shut down and stop the container
-docker compose down
-
-# Re-build and restart after changing configuration code
-docker compose up -d --build
+docker compose logs -f          # stream live logs
+docker compose down             # stop both services
+docker compose up -d --build    # rebuild after code changes
 ```
 
 ---
 
-## 🛡️ RAG Security Grounding Proof
+## Running Natively (Local PostgreSQL)
 
-To ensure the security framework is operating as designed, GovShield has been tested with in-domain and out-of-domain queries:
+### 1. Set up Python environment
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt
+```
 
-1.  **In-Domain Question:** *"What is the required temperature for the server room?"*
-    *   *Result:* Synthesizes and matches context inside `security_protocols.txt` returning: *"strictly between 68 and 72 degrees Fahrenheit"*.
-2.  **Out-of-Domain Question:** *"Who won the FIFA World Cup in 2022?"*
-    *   *Result:* The secure prompt template blocks the query, preventing cloud hallucinations, and returns: *"I cannot find the answer in the provided documents."*
+### 2. Start PostgreSQL with pgvector
+```bash
+docker run -d \
+  --name govshield-pgvector \
+  -e POSTGRES_DB=govshield_db \
+  -e POSTGRES_USER=govshield_user \
+  -e POSTGRES_PASSWORD=govshield_secure_pwd \
+  -p 5432:5432 \
+  pgvector/pgvector:pg16
+```
+
+### 3. Ingest documents
+```bash
+python ingestion.py
+```
+
+### 4. Query via CLI
+```bash
+# Single query
+python retrieval_app.py "What is the VPN policy for remote access?"
+
+# Interactive loop
+python retrieval_app.py
+```
+
+### 5. Launch Streamlit dashboard
+```bash
+streamlit run app.py
+```
+
+---
+
+## RBAC Clearance Levels
+
+Clearance is assigned during ingestion based on filename:
+
+| Filename pattern | Clearance |
+|---|---|
+| `security_protocols*`, `*internal_procedures*` | `L2` |
+| `it_support_faq*`, `office_policies*` | `L1` |
+| Everything else | `Public` |
+
+Query engine respects clearance hierarchy:
+- `Public` → can only retrieve `Public` chunks
+- `L1` → retrieves `Public` + `L1`
+- `L2` → retrieves all
+
+Change the active clearance in `retrieval_app.py`:
+```python
+query_rag("your question", user_clearance="L1")
+```
+
+---
+
+## Grounding Verification
+
+| Query | Expected result |
+|---|---|
+| *"What temperature must the server room maintain?"* | Retrieves from `security_protocols.txt` — answers correctly |
+| *"Who won the FIFA World Cup in 2022?"* | Returns: *"I cannot find the answer in the provided documents."* |
