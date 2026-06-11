@@ -241,3 +241,56 @@ query_rag("your question", user_clearance="L1")
 |---|---|
 | *"What temperature must the server room maintain?"* | Retrieves from `security_protocols.txt` — answers correctly |
 | *"Who won the FIFA World Cup in 2022?"* | Returns: *"I cannot find the answer in the provided documents."* |
+
+---
+
+## RAG Evaluation (`eval.py`)
+
+Offline quality scoring using **LLM-as-judge** on three metrics:
+
+| Metric | What it measures |
+|---|---|
+| **Faithfulness** | Every claim in the answer is supported by the retrieved chunks (hallucination detection) |
+| **Answer Relevance** | The answer actually addresses the question asked |
+| **Context Recall** | The retrieved chunks contain enough information to answer the question |
+| **Grounding Accuracy** | Pipeline correctly answered vs. refused based on RBAC / out-of-scope detection |
+
+The same local Ollama LLM used for synthesis acts as the judge — no external API calls required.
+
+### Run evaluation
+
+```bash
+# Run all 6 test cases (uses per-case clearance levels)
+python eval.py
+
+# Override all test cases to L1 clearance
+python eval.py --clearance L1
+
+# Save results to a specific file
+python eval.py --output baseline.json
+```
+
+### Example output
+
+```
+GovShield RAG Eval — model=gemma3:4b | cases=6
+
+===========================================================================
+  GovShield RAG Evaluation Report
+===========================================================================
+#   Description                                          Faith  Relev  Recall  Ground
+---------------------------------------------------------------------------
+1   L1 user — IT policy question                          0.95   0.90    0.88    PASS
+2   Public user — basic office question                   0.92   0.95    0.91    PASS
+3   L1 user — IT support FAQ                              0.88   0.92    0.85    PASS
+4   L2 user — security protocol question                  0.90   0.88    0.87    PASS
+5   RBAC test — L1 user asking L2 content                  N/A   1.00     N/A    PASS
+6   Hallucination guard — out-of-scope query                N/A   1.00     N/A    PASS
+---------------------------------------------------------------------------
+AVG (answered cases only)                                0.913  0.942   0.877     100%
+===========================================================================
+
+Results saved → eval_results.json
+```
+
+Results are also written to `eval_results.json` with full per-case details and a summary block.
